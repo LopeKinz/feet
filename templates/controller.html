@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>Controller</title>
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0;
+        font-family: system-ui, sans-serif;
+        background: #0f0f10;
+        color: #f3f3f3;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-touch-callout: none;
+      }
+      .wrap { max-width: 520px; margin: 0 auto; padding: 16px; }
+      .row { display: flex; gap: 12px; margin-top: 14px; }
+      button {
+        border: 0;
+        border-radius: 12px;
+        background: #2b2f3a;
+        color: #fff;
+        padding: 16px;
+        font-size: 18px;
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-touch-callout: none;
+      }
+      .grow { flex: 1; }
+      #status { margin-top: 10px; opacity: 0.85; }
+      .cta { background: #4269f5; width: 100%; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h2>Smartphone Controller</h2>
+      <button id="join" class="cta">Beitreten</button>
+      <div id="status">Nicht verbunden</div>
+
+      <div class="row">
+        <button id="left" class="grow">⬅️</button>
+        <button id="jump" class="grow">⤒ Jump</button>
+        <button id="right" class="grow">➡️</button>
+      </div>
+    </div>
+    <script src="/static/controller.js"></script>
+  </body>
+</html>
