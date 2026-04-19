@@ -5,6 +5,7 @@ const rightBtn = document.getElementById('right');
 const jumpBtn = document.getElementById('jump');
 
 const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
+const autoJoin = new URLSearchParams(window.location.search).get('autojoin') === '1';
 
 const input = {
   left: false,
@@ -12,9 +13,17 @@ const input = {
   jump: false,
 };
 
+let joined = false;
+
 function sendInput() {
-  if (ws.readyState !== WebSocket.OPEN) return;
+  if (ws.readyState !== WebSocket.OPEN || !joined) return;
   ws.send(JSON.stringify({ type: 'input', input }));
+}
+
+function joinAsController() {
+  if (ws.readyState !== WebSocket.OPEN || joined) return;
+  const name = `Player-${Math.floor(Math.random() * 900 + 100)}`;
+  ws.send(JSON.stringify({ type: 'join', role: 'controller', name }));
 }
 
 function hold(button, key) {
@@ -37,7 +46,10 @@ function hold(button, key) {
 }
 
 ws.addEventListener('open', () => {
-  statusEl.textContent = 'Verbunden. Drücke "Beitreten".';
+  statusEl.textContent = autoJoin ? 'Verbunden. Auto-Join läuft…' : 'Verbunden. Drücke "Beitreten".';
+  if (autoJoin) {
+    joinAsController();
+  }
 });
 
 ws.addEventListener('close', () => {
@@ -47,6 +59,7 @@ ws.addEventListener('close', () => {
 ws.addEventListener('message', (event) => {
   const msg = JSON.parse(event.data);
   if (msg.type === 'joined') {
+    joined = true;
     statusEl.textContent = `Beigetreten als ${msg.name}`;
     joinBtn.disabled = true;
   } else if (msg.type === 'error') {
@@ -59,8 +72,7 @@ joinBtn.addEventListener('click', () => {
     statusEl.textContent = 'Noch keine Verbindung zum Host.';
     return;
   }
-  const name = `Player-${Math.floor(Math.random() * 900 + 100)}`;
-  ws.send(JSON.stringify({ type: 'join', role: 'controller', name }));
+  joinAsController();
 });
 
 hold(leftBtn, 'left');

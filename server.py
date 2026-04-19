@@ -1,9 +1,12 @@
 import argparse
+import io
 import json
 import secrets
 from dataclasses import dataclass, field
 from typing import Dict, Optional
 
+import qrcode
+import qrcode.image.svg
 from aiohttp import WSMsgType, web
 
 
@@ -27,6 +30,7 @@ class GameHub:
     def __init__(self) -> None:
         self.players: Dict[str, Player] = {}
         self.host_id: Optional[str] = None
+        self.mode: str = "race"
 
     async def broadcast(self, message: dict) -> None:
         dead = []
@@ -59,7 +63,7 @@ class GameHub:
             for p in self.players.values()
             if p.role == "controller"
         ]
-        return {"type": "state", "controllers": controllers}
+        return {"type": "state", "controllers": controllers, "mode": self.mode}
 
 
 hub = GameHub()
@@ -73,13 +77,26 @@ async def controller(request: web.Request) -> web.Response:
     return web.FileResponse("templates/controller.html")
 
 
+async def qr_controller(request: web.Request) -> web.Response:
+    scheme = request.scheme
+    host = request.host
+    controller_url = f"{scheme}://{host}/controller?autojoin=1"
+
+    qr = qrcode.QRCode(box_size=8, border=2)
+    qr.add_data(controller_url)
+    qr.make(fit=True)
+
+    out = io.BytesIO()
+    qr.make_image(image_factory=qrcode.image.svg.SvgImage).save(out)
+    return web.Response(body=out.getvalue(), content_type="image/svg+xml")
+
+
 async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
     ws = web.WebSocketResponse(heartbeat=15)
     await ws.prepare(request)
 
     player_id = secrets.token_hex(4)
     role = "controller"
-    name = "Player"
 
     try:
         async for msg in ws:
@@ -113,6 +130,15 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
                     player.input.jump = bool(inp.get("jump", False))
                     await hub.broadcast(hub.snapshot())
 
+                elif event == "mode_change":
+                    player = hub.players.get(player_id)
+                    if not player or player.role != "host":
+                        continue
+                    mode = data.get("mode", "race")
+                    if mode in {"race", "coin_rush", "survival"}:
+                        hub.mode = mode
+                        await hub.broadcast(hub.snapshot())
+
                 elif event == "ping":
                     await ws.send_str(json.dumps({"type": "pong"}))
 
@@ -130,6 +156,7 @@ def create_app() -> web.Application:
     app = web.Application()
     app.router.add_get("/", index)
     app.router.add_get("/controller", controller)
+    app.router.add_get("/qr-controller", qr_controller)
     app.router.add_get("/ws", websocket_handler)
     app.router.add_static("/static", "static")
     return app

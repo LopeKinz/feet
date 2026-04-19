@@ -27,12 +27,13 @@ python server.py --host 0.0.0.0 --port 8000
 Dann:
 - Host-Ansicht auf dem Laptop öffnen: `http://<laptop-ip>:8000/`
 - Auf Smartphones: `http://<laptop-ip>:8000/controller`
+- Oder direkt QR auf dem Host-Bildschirm scannen
 
 ## Netzwerk-Hinweis
 Alle Geräte müssen im selben Netzwerk sein (Laptop-Hotspot oder gleiches WLAN).
 
 ## Architektur
-- `server.py`: Webserver + WebSocket-Hub + Spielerzustand
-- `static/host.js`: Rendering & Game-Loop
-- `static/controller.js`: Touch-Eingaben und Events
+- `server.py`: Webserver + WebSocket-Hub + Spielmodus + QR-Endpoint
+- `static/host.js`: Rendering, Game-Loop, Weltgenerierung, Spielmodi
+- `static/controller.js`: Touch-Eingaben, Autojoin-Flow
 - `templates/*.html`: Host- und Controller-Oberfläche

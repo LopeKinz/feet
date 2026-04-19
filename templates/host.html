@@ -9,6 +9,20 @@
       #hud { padding: 10px 14px; background: #1b1b1b; display: flex; gap: 16px; align-items: center; }
       canvas { display: block; width: 100vw; height: calc(100vh - 48px); background: linear-gradient(#1f355e, #76a7ef); }
       code { background: #2a2a2a; padding: 2px 6px; border-radius: 4px; }
+      #qrPanel {
+        position: fixed;
+        top: 8px;
+        right: 8px;
+        background: rgba(255, 255, 255, 0.95);
+        color: #222;
+        border-radius: 8px;
+        padding: 8px;
+        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35);
+        z-index: 10;
+        width: 156px;
+      }
+      #qrPanel img { width: 140px; height: 140px; display: block; margin: 0 auto 4px; }
+      #qrPanel p { margin: 0; font-size: 12px; text-align: center; }
     </style>
   </head>
   <body>
@@ -16,7 +30,20 @@
       <strong>Host läuft</strong>
       <span>Controller URL: <code id="controllerUrl"></code></span>
       <span>Spieler: <span id="playerCount">0</span></span>
+      <label>Modus:
+        <select id="modeSelect">
+          <option value="race">Race</option>
+          <option value="coin_rush">Coin Rush</option>
+          <option value="survival">Survival</option>
+        </select>
+      </label>
     </div>
+
+    <aside id="qrPanel">
+      <img src="/qr-controller" alt="QR Code Controller Join" />
+      <p>Scan = sofort als Controller beitreten</p>
+    </aside>
+
     <canvas id="game" width="1280" height="720"></canvas>
     <script src="/static/host.js"></script>
   </body>
