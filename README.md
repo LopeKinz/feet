@@ -7,8 +7,10 @@ Ein lokaler Coop-Platformer, bei dem ein Laptop das Spiel hostet und Smartphones
 - Host-Ansicht (`/`) rendert Platformer im Browser (Canvas)
 - Smartphone-Controller (`/controller`) mit Touch-Buttons
 - QR-Code in der Host-Ecke für direkten Controller-Join (`autojoin=1`)
-- Unendlich generierende Welt (Chunk-basiert)
+- Unendlich generierende Welt (Chunk-basiert) mit Biomen und abwechslungsreicheren Plattform-Mustern
 - Mehrere Spielmodi: `Race`, `Coin Rush`, `Survival`
+- Verbesserte Figuren-Darstellung (Kopf/Körper/Animation) statt einfacher Blöcke
+- Controller verhindert Long-Press-Textauswahl/Kontextmenü auf Smartphones
 - Robustere Verbindung per einfachem WebSocket-Reconnect (Host + Controller)
 - Input-Updates werden serverseitig gezielt an den Host gesendet (weniger Broadcast-Overhead)
 

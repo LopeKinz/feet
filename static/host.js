@@ -39,7 +39,7 @@ function floorY() {
 const GRAVITY = 1900;
 const SPEED = 280;
 const JUMP_VELOCITY = -700;
-const CHUNK_WIDTH = 420;
+const CHUNK_WIDTH = 460;
 
 const state = {
   controllers: [],
@@ -48,6 +48,7 @@ const state = {
   cameraX: 0,
   mode: 'race',
   modeTimer: 60,
+  time: 0,
 };
 
 function setConnStatus(text, color = '#eee') {
@@ -82,7 +83,7 @@ function connectWs() {
     for (const c of state.controllers) {
       if (!state.entities.has(c.id)) {
         state.entities.set(c.id, {
-          x: 120 + state.entities.size * 36,
+          x: 120 + state.entities.size * 40,
           y: floorY(),
           vx: 0,
           vy: 0,
@@ -92,6 +93,7 @@ function connectWs() {
           progress: 0,
           coins: 0,
           alive: true,
+          facing: 1,
         });
       }
     }
@@ -130,40 +132,68 @@ function rand(seed) {
   return x - Math.floor(x);
 }
 
+function biomeByChunk(index) {
+  const biomes = ['grass', 'desert', 'ice'];
+  const n = Math.floor(Math.abs(index) / 4) % biomes.length;
+  return biomes[n];
+}
+
+function colorsForBiome(biome) {
+  if (biome === 'desert') return { ground: '#8d6e40', top: '#c39a5f' };
+  if (biome === 'ice') return { ground: '#8db6d9', top: '#d0ebff' };
+  return { ground: '#5b3f1f', top: '#7fba67' };
+}
+
 function createChunk(index) {
   const startX = index * CHUNK_WIDTH;
+  const biome = biomeByChunk(index);
   const platforms = [];
-  for (let i = 0; i < 4; i++) {
-    const seed = index * 10 + i;
-    const width = 90 + Math.floor(rand(seed + 1) * 120);
-    const x = startX + Math.floor(rand(seed + 2) * (CHUNK_WIDTH - width));
-    const y = floorY() - 60 - Math.floor(rand(seed + 3) * 260);
-    platforms.push({ x, y, w: width, h: 14 });
+
+  const baseY = floorY() - 45 - Math.floor(rand(index + 2) * 120);
+  let xCursor = startX + 8;
+
+  for (let i = 0; i < 5; i++) {
+    const seed = index * 20 + i;
+    const width = 90 + Math.floor(rand(seed + 1) * 140);
+    const gap = 35 + Math.floor(rand(seed + 2) * 55);
+    const wave = Math.sin((index * 5 + i) * 0.8) * 36;
+    const y = baseY + wave + Math.floor(rand(seed + 3) * 90);
+    platforms.push({ x: xCursor, y, w: width, h: 14, biome });
+    xCursor += width + gap;
   }
 
+  const bonusPlatformY = floorY() - 240 - Math.floor(rand(index * 11 + 8) * 120);
+  platforms.push({
+    x: startX + 50 + Math.floor(rand(index * 17 + 2) * (CHUNK_WIDTH - 130)),
+    y: bonusPlatformY,
+    w: 80,
+    h: 14,
+    biome,
+  });
+
   const coins = [];
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 4; i++) {
     const seed = index * 13 + i;
     coins.push({
-      x: startX + 30 + Math.floor(rand(seed + 4) * (CHUNK_WIDTH - 60)),
-      y: floorY() - 120 - Math.floor(rand(seed + 5) * 260),
+      x: startX + 25 + Math.floor(rand(seed + 4) * (CHUNK_WIDTH - 50)),
+      y: floorY() - 120 - Math.floor(rand(seed + 5) * 250),
       taken: false,
     });
   }
 
-  return { index, startX, endX: startX + CHUNK_WIDTH, platforms, coins };
+  return { index, startX, endX: startX + CHUNK_WIDTH, platforms, coins, biome };
 }
 
 function ensureWorldAround(cameraX) {
   const centerChunk = Math.floor(cameraX / CHUNK_WIDTH);
-  for (let i = centerChunk - 3; i <= centerChunk + 5; i++) {
+  for (let i = centerChunk - 3; i <= centerChunk + 6; i++) {
     if (!state.chunks.has(i)) {
       state.chunks.set(i, createChunk(i));
     }
   }
 
   for (const idx of [...state.chunks.keys()]) {
-    if (idx < centerChunk - 6 || idx > centerChunk + 8) {
+    if (idx < centerChunk - 7 || idx > centerChunk + 9) {
       state.chunks.delete(idx);
     }
   }
@@ -171,7 +201,7 @@ function ensureWorldAround(cameraX) {
 
 function getPlatformsNear(x) {
   const idx = Math.floor(x / CHUNK_WIDTH);
-  const platforms = [{ x: -100000, y: floorY(), w: 200000, h: 30 }];
+  const platforms = [{ x: -100000, y: floorY(), w: 200000, h: 35, biome: 'grass' }];
   for (let i = idx - 1; i <= idx + 1; i++) {
     const chunk = state.chunks.get(i);
     if (!chunk) continue;
@@ -190,6 +220,7 @@ function resetByMode() {
     e.progress = 0;
     e.coins = 0;
     e.alive = true;
+    e.facing = 1;
   }
   state.modeTimer = 60;
   state.chunks.clear();
@@ -212,9 +243,10 @@ let last = performance.now();
 function tick(now) {
   const dt = Math.min(0.033, (now - last) / 1000);
   last = now;
+  state.time += dt;
 
   const leader = [...state.entities.values()].reduce((m, e) => Math.max(m, e.x), 0);
-  state.cameraX = Math.max(0, leader - 240);
+  state.cameraX = Math.max(0, leader - viewWidth * 0.25);
   ensureWorldAround(state.cameraX);
 
   if (state.mode === 'survival') {
@@ -228,6 +260,7 @@ function tick(now) {
     e.vx = 0;
     if (c.input.left) e.vx -= SPEED;
     if (c.input.right) e.vx += SPEED;
+    if (e.vx !== 0) e.facing = e.vx > 0 ? 1 : -1;
 
     if (c.input.jump && e.onGround) {
       e.vy = JUMP_VELOCITY;
@@ -279,16 +312,38 @@ function tick(now) {
   requestAnimationFrame(tick);
 }
 
+function drawBackground() {
+  const skyGrad = ctx.createLinearGradient(0, 0, 0, viewHeight);
+  skyGrad.addColorStop(0, '#214478');
+  skyGrad.addColorStop(1, '#82b8ff');
+  ctx.fillStyle = skyGrad;
+  ctx.fillRect(0, 0, viewWidth, viewHeight);
+
+  const hillOffset = (state.cameraX * 0.2) % 600;
+  ctx.fillStyle = 'rgba(50, 90, 70, 0.35)';
+  for (let i = -1; i < 4; i++) {
+    const x = i * 600 - hillOffset;
+    ctx.beginPath();
+    ctx.moveTo(x, viewHeight);
+    ctx.quadraticCurveTo(x + 200, viewHeight - 170, x + 420, viewHeight);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
 function draw() {
-  ctx.clearRect(0, 0, viewWidth, viewHeight);
+  drawBackground();
 
   ctx.save();
   ctx.translate(-state.cameraX, 0);
 
   for (const [, chunk] of state.chunks) {
     for (const p of chunk.platforms) {
-      ctx.fillStyle = '#6b4f2a';
+      const c = colorsForBiome(p.biome);
+      ctx.fillStyle = c.ground;
       ctx.fillRect(p.x, p.y, p.w, p.h);
+      ctx.fillStyle = c.top;
+      ctx.fillRect(p.x, p.y - 4, p.w, 4);
     }
 
     if (state.mode === 'coin_rush') {
@@ -304,17 +359,41 @@ function draw() {
 
   for (const [, e] of state.entities) {
     if (!e.alive) continue;
-    ctx.fillStyle = e.color;
-    ctx.fillRect(e.x, e.y - 50, 32, 50);
-
-    ctx.fillStyle = '#fff';
-    ctx.font = '16px sans-serif';
-    ctx.fillText(e.name, e.x - 6, e.y - 58);
+    drawPlayer(e);
   }
 
   ctx.restore();
-
   drawModeHud();
+}
+
+function drawPlayer(e) {
+  const walk = Math.sin(state.time * 12 + e.x * 0.04) * 3;
+  const x = e.x;
+  const y = e.y;
+
+  ctx.fillStyle = e.color;
+  ctx.fillRect(x + 4, y - 40, 24, 28); // torso
+
+  ctx.fillStyle = '#ffd7b5';
+  ctx.beginPath();
+  ctx.arc(x + 16, y - 49, 10, 0, Math.PI * 2); // head
+  ctx.fill();
+
+  ctx.fillStyle = '#1b1b1b';
+  ctx.fillRect(x + 12 + e.facing * 2, y - 52, 2, 2); // eye
+
+  ctx.strokeStyle = e.color;
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(x + 12, y - 12);
+  ctx.lineTo(x + 10, y + walk);
+  ctx.moveTo(x + 20, y - 12);
+  ctx.lineTo(x + 22, y - walk);
+  ctx.stroke();
+
+  ctx.fillStyle = '#fff';
+  ctx.font = '14px sans-serif';
+  ctx.fillText(e.name, x - 6, y - 60);
 }
 
 function drawModeHud() {
@@ -333,7 +412,7 @@ function drawModeHud() {
   }
 
   ctx.fillStyle = 'rgba(0,0,0,0.5)';
-  ctx.fillRect(12, 12, 360, 34);
+  ctx.fillRect(12, 12, 370, 34);
   ctx.fillStyle = '#fff';
   ctx.font = '18px sans-serif';
   ctx.fillText(status, 20, 34);

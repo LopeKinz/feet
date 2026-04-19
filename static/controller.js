@@ -137,6 +137,16 @@ function connectWs() {
   ws.addEventListener('error', onDisconnect);
 }
 
+
+
+document.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+});
+
+document.addEventListener('selectstart', (e) => {
+  e.preventDefault();
+});
+
 joinBtn.addEventListener('click', () => {
   if (!ws || ws.readyState !== WebSocket.OPEN) {
     statusEl.textContent = 'Noch keine Verbindung zum Host.';
