@@ -1,2 +1,2 @@
-aiohttp==3.11.16
+aiohttp==3.13.4
 qrcode==7.4.2
