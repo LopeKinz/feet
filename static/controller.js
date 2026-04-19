@@ -4,8 +4,12 @@ const leftBtn = document.getElementById('left');
 const rightBtn = document.getElementById('right');
 const jumpBtn = document.getElementById('jump');
 
-const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
 const autoJoin = new URLSearchParams(window.location.search).get('autojoin') === '1';
+
+let ws = null;
+let joined = false;
+let reconnectAttempts = 0;
+let reconnectTimer = null;
 
 const input = {
   left: false,
@@ -13,62 +17,128 @@ const input = {
   jump: false,
 };
 
-let joined = false;
+function controlsEnabled(enabled) {
+  leftBtn.disabled = !enabled;
+  rightBtn.disabled = !enabled;
+  jumpBtn.disabled = !enabled;
+  joinBtn.disabled = joined || !enabled;
+}
 
 function sendInput() {
-  if (ws.readyState !== WebSocket.OPEN || !joined) return;
+  if (!ws || ws.readyState !== WebSocket.OPEN || !joined) return;
   ws.send(JSON.stringify({ type: 'input', input }));
 }
 
 function joinAsController() {
-  if (ws.readyState !== WebSocket.OPEN || joined) return;
+  if (!ws || ws.readyState !== WebSocket.OPEN || joined) return;
   const name = `Player-${Math.floor(Math.random() * 900 + 100)}`;
   ws.send(JSON.stringify({ type: 'join', role: 'controller', name }));
 }
 
 function hold(button, key) {
   const onDown = (e) => {
-    e.preventDefault();
+    if (e && typeof e.preventDefault === 'function') {
+      e.preventDefault();
+    }
     input[key] = true;
     sendInput();
   };
+
   const onUp = (e) => {
-    e.preventDefault();
+    if (e && typeof e.preventDefault === 'function') {
+      e.preventDefault();
+    }
     input[key] = false;
     sendInput();
   };
-  button.addEventListener('touchstart', onDown, { passive: false });
-  button.addEventListener('touchend', onUp, { passive: false });
-  button.addEventListener('touchcancel', onUp, { passive: false });
-  button.addEventListener('mousedown', onDown);
-  button.addEventListener('mouseup', onUp);
-  button.addEventListener('mouseleave', onUp);
+
+  if (window.PointerEvent) {
+    button.addEventListener('pointerdown', onDown);
+    button.addEventListener('pointerup', onUp);
+    button.addEventListener('pointercancel', onUp);
+    button.addEventListener('pointerleave', onUp);
+  } else {
+    let usingTouch = false;
+
+    const touchDown = (e) => {
+      usingTouch = true;
+      onDown(e);
+    };
+
+    const touchUp = (e) => {
+      usingTouch = true;
+      onUp(e);
+    };
+
+    const mouseDown = (e) => {
+      if (usingTouch) return;
+      onDown(e);
+    };
+
+    const mouseUp = (e) => {
+      if (usingTouch) return;
+      onUp(e);
+    };
+
+    button.addEventListener('touchstart', touchDown, { passive: false });
+    button.addEventListener('touchend', touchUp, { passive: false });
+    button.addEventListener('touchcancel', touchUp, { passive: false });
+
+    button.addEventListener('mousedown', mouseDown);
+    button.addEventListener('mouseup', mouseUp);
+    button.addEventListener('mouseleave', mouseUp);
+  }
 }
 
-ws.addEventListener('open', () => {
-  statusEl.textContent = autoJoin ? 'Verbunden. Auto-Join läuft…' : 'Verbunden. Drücke "Beitreten".';
-  if (autoJoin) {
-    joinAsController();
+function connectWs() {
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+    return;
   }
-});
 
-ws.addEventListener('close', () => {
-  statusEl.textContent = 'Verbindung getrennt.';
-});
+  ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
+  controlsEnabled(false);
+  statusEl.textContent = 'Verbinde…';
 
-ws.addEventListener('message', (event) => {
-  const msg = JSON.parse(event.data);
-  if (msg.type === 'joined') {
-    joined = true;
-    statusEl.textContent = `Beigetreten als ${msg.name}`;
-    joinBtn.disabled = true;
-  } else if (msg.type === 'error') {
-    statusEl.textContent = `Fehler: ${msg.message}`;
-  }
-});
+  ws.addEventListener('open', () => {
+    reconnectAttempts = 0;
+    statusEl.textContent = autoJoin ? 'Verbunden. Auto-Join läuft…' : 'Verbunden. Drücke "Beitreten".';
+    controlsEnabled(true);
+    if (autoJoin && !joined) {
+      joinAsController();
+    }
+  });
+
+  ws.addEventListener('message', (event) => {
+    const msg = JSON.parse(event.data);
+    if (msg.type === 'joined') {
+      joined = true;
+      statusEl.textContent = `Beigetreten als ${msg.name}`;
+      controlsEnabled(true);
+    } else if (msg.type === 'error') {
+      statusEl.textContent = `Fehler: ${msg.message}`;
+    }
+  });
+
+  const onDisconnect = () => {
+    controlsEnabled(false);
+    joined = false;
+    statusEl.textContent = 'Verbindung getrennt – erneuter Versuch…';
+
+    if (reconnectTimer) return;
+    const delay = Math.min(5000, 700 * (reconnectAttempts + 1));
+    reconnectAttempts += 1;
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      connectWs();
+    }, delay);
+  };
+
+  ws.addEventListener('close', onDisconnect);
+  ws.addEventListener('error', onDisconnect);
+}
 
 joinBtn.addEventListener('click', () => {
-  if (ws.readyState !== WebSocket.OPEN) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
     statusEl.textContent = 'Noch keine Verbindung zum Host.';
     return;
   }
@@ -78,3 +148,5 @@ joinBtn.addEventListener('click', () => {
 hold(leftBtn, 'left');
 hold(rightBtn, 'right');
 hold(jumpBtn, 'jump');
+controlsEnabled(false);
+connectWs();

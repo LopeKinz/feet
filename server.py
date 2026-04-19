@@ -1,4 +1,5 @@
 import argparse
+import asyncio
 import io
 import json
 import secrets
@@ -32,15 +33,37 @@ class GameHub:
         self.host_id: Optional[str] = None
         self.mode: str = "race"
 
+    async def _safe_send(self, pid: str, player: Player, payload: str) -> bool:
+        if player.ws.closed:
+            return False
+        try:
+            await asyncio.wait_for(player.ws.send_str(payload), timeout=1.0)
+            return True
+        except (asyncio.TimeoutError, ConnectionResetError, RuntimeError):
+            return False
+
     async def broadcast(self, message: dict) -> None:
-        dead = []
-        for pid, player in self.players.items():
-            if player.ws.closed:
-                dead.append(pid)
+        if not self.players:
+            return
+
+        payload = json.dumps(message)
+        tasks = [self._safe_send(pid, player, payload) for pid, player in self.players.items()]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for (pid, _), result in zip(self.players.copy().items(), results):
+            if result is True:
                 continue
-            await player.ws.send_str(json.dumps(message))
-        for pid in dead:
             self.remove_player(pid)
+
+    async def send_to_host(self, message: dict) -> None:
+        if not self.host_id:
+            return
+        host = self.players.get(self.host_id)
+        if not host:
+            return
+        ok = await self._safe_send(self.host_id, host, json.dumps(message))
+        if not ok:
+            self.remove_player(self.host_id)
 
     def remove_player(self, player_id: str) -> None:
         player = self.players.pop(player_id, None)
@@ -128,7 +151,8 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
                     player.input.left = bool(inp.get("left", False))
                     player.input.right = bool(inp.get("right", False))
                     player.input.jump = bool(inp.get("jump", False))
-                    await hub.broadcast(hub.snapshot())
+                    # Input updates are only needed by the host renderer.
+                    await hub.send_to_host(hub.snapshot())
 
                 elif event == "mode_change":
                     player = hub.players.get(player_id)

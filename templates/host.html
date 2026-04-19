@@ -6,9 +6,10 @@
     <title>Local Coop Host</title>
     <style>
       body { margin: 0; font-family: system-ui, sans-serif; background: #111; color: #eee; }
-      #hud { padding: 10px 14px; background: #1b1b1b; display: flex; gap: 16px; align-items: center; }
+      #hud { padding: 10px 14px; background: #1b1b1b; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
       canvas { display: block; width: 100vw; height: calc(100vh - 48px); background: linear-gradient(#1f355e, #76a7ef); }
       code { background: #2a2a2a; padding: 2px 6px; border-radius: 4px; }
+      #connStatus { font-weight: 600; }
       #qrPanel {
         position: fixed;
         top: 8px;
@@ -30,6 +31,7 @@
       <strong>Host läuft</strong>
       <span>Controller URL: <code id="controllerUrl"></code></span>
       <span>Spieler: <span id="playerCount">0</span></span>
+      <span id="connStatus">Verbinde…</span>
       <label>Modus:
         <select id="modeSelect">
           <option value="race">Race</option>
@@ -44,7 +46,7 @@
       <p>Scan = sofort als Controller beitreten</p>
     </aside>
 
-    <canvas id="game" width="1280" height="720"></canvas>
+    <canvas id="game"></canvas>
     <script src="/static/host.js"></script>
   </body>
 </html>

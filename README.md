@@ -4,10 +4,13 @@ Ein lokaler Coop-Platformer, bei dem ein Laptop das Spiel hostet und Smartphones
 
 ## Features
 - Python-Backend (`aiohttp`) für Lobby, Controller-Verwaltung und WebSocket-Kommunikation
-- Host-Ansicht (`/`) rendert einen einfachen Platformer im Browser (Canvas)
+- Host-Ansicht (`/`) rendert Platformer im Browser (Canvas)
 - Smartphone-Controller (`/controller`) mit Touch-Buttons
-- Spieler treten über einen `join`-Button bei und steuern eine eigene Figur
-- QR-Code-URL wird nicht zwingend benötigt; einfache lokale URL reicht
+- QR-Code in der Host-Ecke für direkten Controller-Join (`autojoin=1`)
+- Unendlich generierende Welt (Chunk-basiert)
+- Mehrere Spielmodi: `Race`, `Coin Rush`, `Survival`
+- Robustere Verbindung per einfachem WebSocket-Reconnect (Host + Controller)
+- Input-Updates werden serverseitig gezielt an den Host gesendet (weniger Broadcast-Overhead)
 
 ## Voraussetzungen
 - Python 3.10+
@@ -35,5 +38,5 @@ Alle Geräte müssen im selben Netzwerk sein (Laptop-Hotspot oder gleiches WLAN)
 ## Architektur
 - `server.py`: Webserver + WebSocket-Hub + Spielmodus + QR-Endpoint
 - `static/host.js`: Rendering, Game-Loop, Weltgenerierung, Spielmodi
-- `static/controller.js`: Touch-Eingaben, Autojoin-Flow
+- `static/controller.js`: Touch-/Pointer-Eingaben, Autojoin-Flow, Reconnect
 - `templates/*.html`: Host- und Controller-Oberfläche

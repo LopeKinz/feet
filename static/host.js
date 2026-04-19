@@ -1,16 +1,45 @@
-const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const playerCount = document.getElementById('playerCount');
 const controllerUrl = document.getElementById('controllerUrl');
 const modeSelect = document.getElementById('modeSelect');
+const connStatus = document.getElementById('connStatus');
 controllerUrl.textContent = `${location.origin}/controller?autojoin=1`;
+
+let ws = null;
+let reconnectAttempts = 0;
+let reconnectTimer = null;
+
+let viewWidth = Math.floor(canvas.getBoundingClientRect().width || 1280);
+let viewHeight = Math.floor(canvas.getBoundingClientRect().height || 720);
+
+function resizeCanvas() {
+  const rect = canvas.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+
+  const dpr = window.devicePixelRatio || 1;
+  viewWidth = Math.floor(rect.width);
+  viewHeight = Math.floor(rect.height);
+
+  const pixelWidth = Math.max(1, Math.floor(viewWidth * dpr));
+  const pixelHeight = Math.max(1, Math.floor(viewHeight * dpr));
+
+  if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+    canvas.width = pixelWidth;
+    canvas.height = pixelHeight;
+  }
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function floorY() {
+  return viewHeight - 90;
+}
 
 const GRAVITY = 1900;
 const SPEED = 280;
 const JUMP_VELOCITY = -700;
 const CHUNK_WIDTH = 420;
-const BASE_FLOOR = canvas.height - 90;
 
 const state = {
   controllers: [],
@@ -20,6 +49,75 @@ const state = {
   mode: 'race',
   modeTimer: 60,
 };
+
+function setConnStatus(text, color = '#eee') {
+  connStatus.textContent = text;
+  connStatus.style.color = color;
+}
+
+function connectWs() {
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+    return;
+  }
+
+  ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
+  setConnStatus('Verbinde…', '#ddd');
+  modeSelect.disabled = true;
+
+  ws.addEventListener('open', () => {
+    reconnectAttempts = 0;
+    setConnStatus('Online', '#9be58c');
+    modeSelect.disabled = false;
+    ws.send(JSON.stringify({ type: 'join', role: 'host', name: 'Host' }));
+  });
+
+  ws.addEventListener('message', (event) => {
+    const msg = JSON.parse(event.data);
+    if (msg.type !== 'state') return;
+    state.controllers = msg.controllers;
+    state.mode = msg.mode || state.mode;
+    modeSelect.value = state.mode;
+    playerCount.textContent = String(state.controllers.length);
+
+    for (const c of state.controllers) {
+      if (!state.entities.has(c.id)) {
+        state.entities.set(c.id, {
+          x: 120 + state.entities.size * 36,
+          y: floorY(),
+          vx: 0,
+          vy: 0,
+          onGround: true,
+          color: colorById(c.id),
+          name: c.name,
+          progress: 0,
+          coins: 0,
+          alive: true,
+        });
+      }
+    }
+
+    for (const id of [...state.entities.keys()]) {
+      if (!state.controllers.find((c) => c.id === id)) {
+        state.entities.delete(id);
+      }
+    }
+  });
+
+  const onDisconnect = () => {
+    modeSelect.disabled = true;
+    setConnStatus('Offline – Reconnect…', '#ffcc66');
+    if (reconnectTimer) return;
+    const delay = Math.min(5000, 700 * (reconnectAttempts + 1));
+    reconnectAttempts += 1;
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      connectWs();
+    }, delay);
+  };
+
+  ws.addEventListener('close', onDisconnect);
+  ws.addEventListener('error', onDisconnect);
+}
 
 function colorById(id) {
   const palette = ['#f94144', '#f3722c', '#f9c74f', '#90be6d', '#43aa8b', '#577590'];
@@ -39,7 +137,7 @@ function createChunk(index) {
     const seed = index * 10 + i;
     const width = 90 + Math.floor(rand(seed + 1) * 120);
     const x = startX + Math.floor(rand(seed + 2) * (CHUNK_WIDTH - width));
-    const y = BASE_FLOOR - 60 - Math.floor(rand(seed + 3) * 260);
+    const y = floorY() - 60 - Math.floor(rand(seed + 3) * 260);
     platforms.push({ x, y, w: width, h: 14 });
   }
 
@@ -48,7 +146,7 @@ function createChunk(index) {
     const seed = index * 13 + i;
     coins.push({
       x: startX + 30 + Math.floor(rand(seed + 4) * (CHUNK_WIDTH - 60)),
-      y: BASE_FLOOR - 120 - Math.floor(rand(seed + 5) * 260),
+      y: floorY() - 120 - Math.floor(rand(seed + 5) * 260),
       taken: false,
     });
   }
@@ -73,7 +171,7 @@ function ensureWorldAround(cameraX) {
 
 function getPlatformsNear(x) {
   const idx = Math.floor(x / CHUNK_WIDTH);
-  const platforms = [{ x: -100000, y: BASE_FLOOR, w: 200000, h: 30 }];
+  const platforms = [{ x: -100000, y: floorY(), w: 200000, h: 30 }];
   for (let i = idx - 1; i <= idx + 1; i++) {
     const chunk = state.chunks.get(i);
     if (!chunk) continue;
@@ -85,7 +183,7 @@ function getPlatformsNear(x) {
 function resetByMode() {
   for (const [, e] of state.entities) {
     e.x = 120;
-    e.y = BASE_FLOOR;
+    e.y = floorY();
     e.vx = 0;
     e.vy = 0;
     e.onGround = true;
@@ -101,46 +199,14 @@ modeSelect.addEventListener('change', () => {
   const mode = modeSelect.value;
   state.mode = mode;
   resetByMode();
-  if (ws.readyState === WebSocket.OPEN) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: 'mode_change', mode }));
   }
 });
 
-ws.addEventListener('open', () => {
-  ws.send(JSON.stringify({ type: 'join', role: 'host', name: 'Host' }));
-});
-
-ws.addEventListener('message', (event) => {
-  const msg = JSON.parse(event.data);
-  if (msg.type !== 'state') return;
-  state.controllers = msg.controllers;
-  state.mode = msg.mode || state.mode;
-  modeSelect.value = state.mode;
-  playerCount.textContent = String(state.controllers.length);
-
-  for (const c of state.controllers) {
-    if (!state.entities.has(c.id)) {
-      state.entities.set(c.id, {
-        x: 120 + state.entities.size * 36,
-        y: BASE_FLOOR,
-        vx: 0,
-        vy: 0,
-        onGround: true,
-        color: colorById(c.id),
-        name: c.name,
-        progress: 0,
-        coins: 0,
-        alive: true,
-      });
-    }
-  }
-
-  for (const id of [...state.entities.keys()]) {
-    if (!state.controllers.find((c) => c.id === id)) {
-      state.entities.delete(id);
-    }
-  }
-});
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+connectWs();
 
 let last = performance.now();
 function tick(now) {
@@ -202,7 +268,7 @@ function tick(now) {
       }
     }
 
-    if (state.mode === 'survival' && e.y > canvas.height + 100) {
+    if (state.mode === 'survival' && e.y > viewHeight + 100) {
       e.alive = false;
     }
 
@@ -214,7 +280,7 @@ function tick(now) {
 }
 
 function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, viewWidth, viewHeight);
 
   ctx.save();
   ctx.translate(-state.cameraX, 0);
